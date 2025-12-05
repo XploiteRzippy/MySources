@@ -39,3 +39,5 @@ button.MouseButton1Click:Connect(function()
     button.Text = "RESPAWN"
     button.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
     button.AutoButtonColor = true
+end)
+
