@@ -1,0 +1,119 @@
+-- Universal Auto ProximityPrompt Holder (Supports Attachments & NPCs)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local prompts = {}
+
+local function getPromptPosition(prompt)
+    local parent = prompt.Parent
+    if not parent then return nil end
+
+    if parent:IsA("BasePart") then
+        return parent.Position
+    end
+
+    -- Attachments
+    if parent:IsA("Attachment") and parent.Parent and parent.Parent:IsA("BasePart") then
+        return parent.WorldPosition
+    end
+
+    -- Fallback: try any part inside the model
+    if parent:IsA("Model") then
+        local primary = parent.PrimaryPart
+        if primary then return primary.Position end
+
+        for _, obj in ipairs(parent:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                return obj.Position
+            end
+        end
+    end
+
+    return nil
+end
+
+local function addPrompt(p)
+    if prompts[p] then return end
+    prompts[p] = {
+        holding = false
+    }
+end
+
+local function removePrompt(p)
+    if prompts[p] then
+        pcall(function() p:InputHoldEnd() end)
+        prompts[p] = nil
+    end
+end
+
+for _, obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("ProximityPrompt") then
+        addPrompt(obj)
+    end
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("ProximityPrompt") then
+        addPrompt(obj)
+    end
+end)
+
+workspace.DescendantRemoving:Connect(function(obj)
+    if obj:IsA("ProximityPrompt") then
+        removePrompt(obj)
+    end
+end)
+
+local function getRoot()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
+end
+
+RunService.Heartbeat:Connect(function()
+    local root = getRoot()
+    if not root then return end
+
+    for prompt, state in pairs(prompts) do
+        if not prompt or not prompt.Parent then
+            removePrompt(prompt)
+            continue
+        end
+
+        local pos = getPromptPosition(prompt)
+        if not pos then continue end
+
+        local distance = (root.Position - pos).Magnitude
+
+        if distance <= prompt.MaxActivationDistance and not state.holding then
+            state.holding = true
+
+            task.spawn(function()
+                pcall(function()
+                    prompt:InputHoldBegin()
+                end)
+
+                local t = 0
+                while t < prompt.HoldDuration and prompt and prompt.Parent and state.holding do
+                    task.wait(0.05)
+                    t += 0.05
+
+                    local newPos = getPromptPosition(prompt)
+                    if not newPos then break end
+
+                    local dist = (root.Position - newPos).Magnitude
+                    if dist > prompt.MaxActivationDistance then
+                        state.holding = false
+                        break
+                    end
+                end
+
+                pcall(function()
+                    prompt:InputHoldEnd()
+                end)
+                state.holding = false
+            end)
+        end
+    end
+end)
