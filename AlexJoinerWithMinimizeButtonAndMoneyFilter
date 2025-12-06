@@ -1,0 +1,389 @@
+-- ALEX JOINER - FINAL POLISHED VERSION
+-- Content moved up (no top gap) + Perfect Minimize + Original AutoJoin
+
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+local API_URL = "https://gptajrailway-production.up.railway.app/servers"
+local PLACE_ID = 109983668079237
+
+-- State
+local servers = {}
+local minMoney = 0
+local isJoining = false
+local isAutoJoining = false
+local autoJoinDelay = 3
+local uiAlive = true
+local isMinimized = false
+
+-- PARSE MONEY (Your original smart parser)
+local function parseMoney(str)
+    if not str or str == "" then return 0 end
+    local clean = str:lower():gsub(" ", ""):gsub(",", ""):gsub("/s", "")
+    local numStr = clean:match("[%d%.]+")
+    local suffix = clean:match("[kmbtq]")
+    if not numStr then return 0 end
+    local num = tonumber(numStr)
+    if not suffix then return num * 1000000 end
+    if suffix == "k" then return num * 1000 end
+    if suffix == "m" then return num * 1000000 end
+    if suffix == "b" then return num * 1000000000 end
+    if suffix == "t" then return num * 1000000000000 end
+    if suffix == "q" then return num * 1000000000000000 end
+    return num
+end
+
+-- HTTP GET
+local function httpGet(url)
+    if syn and syn.request then return syn.request({Url = url, Method = "GET"}).Body
+    elseif request then return request({Url = url, Method = "GET"}).Body
+    elseif http_request then return http_request({Url = url, Method = "GET"}).Body
+    elseif http and http.request then return http.request({Url = url, Method = "GET"}).Body
+    else error("No HTTP method") end
+end
+
+-- Fetch & Teleport (unchanged)
+local function fetchServers()
+    local ok, res = pcall(function()
+        return HttpService:JSONDecode(httpGet(API_URL))
+    end)
+    if ok and type(res) == "table" then
+        servers = res
+        return true
+    else
+        warn("[AutoJoiner] Failed to fetch")
+        return false
+    end
+end
+
+local function teleportToJob(jobId)
+    if not jobId or isJoining then return false end
+    isJoining = true
+    pcall(function()
+        if CoreGui:FindFirstChild("RobloxPromptGui") and CoreGui.RobloxPromptGui:FindFirstChild("promptOverlay") then
+            CoreGui.RobloxPromptGui.promptOverlay.Visible = false
+        end
+    end)
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(PLACE_ID, jobId, player)
+    end)
+    task.delay(5, function() isJoining = false end)
+end
+
+-- === UI ===
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoJoinerGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 340, 0, 460)
+MainFrame.Position = UDim2.new(0.5, -170, 0.5, -230)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+
+-- Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+TitleBar.Parent = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 12)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -120, 1, 0)
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Alex Joiner/@a1exsopro"
+Title.TextColor3 = Color3.new(1,1,1)
+Title.TextSize = 20
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
+
+-- Minimize & Close
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+MinimizeBtn.Position = UDim2.new(1, -75, 0, 5)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(100, 180, 255)
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.new(1,1,1)
+MinimizeBtn.TextSize = 22
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Parent = TitleBar
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(1, 0)
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -40, 0, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.new(1,1,1)
+CloseBtn.TextSize = 16
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = TitleBar
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(1, 0)
+
+-- Content (starts immediately under title bar - no gap!)
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(1, 0, 1, -40)
+ContentFrame.Position = UDim2.new(0, 0, 0, 40)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent = MainFrame
+
+-- Minimize Toggle (perfect)
+local function toggleMinimize()
+    isMinimized = not isMinimized
+    if isMinimized then
+        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {Size = UDim2.new(0,340,0,40)}):Play()
+        MinimizeBtn.Text = "□"
+        ContentFrame.Visible = false
+    else
+        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {Size = UDim2.new(0,340,0,460)}):Play()
+        MinimizeBtn.Text = "-"
+        task.wait(0.31)
+        ContentFrame.Visible = true
+    end
+end
+MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
+CloseBtn.MouseButton1Click:Connect(function()
+    uiAlive = false
+    ScreenGui:Destroy()
+end)
+
+-- CONTENT MOVED UP - TIGHT & CLEAN
+local MinRow = Instance.new("Frame")
+MinRow.Size = UDim2.new(1, -30, 0, 35)
+MinRow.Position = UDim2.new(0, 15, 0, 8)        -- ← Moved up from 45 to 8
+MinRow.BackgroundTransparency = 1
+MinRow.Parent = ContentFrame
+
+local MinLabel = Instance.new("TextLabel")
+MinLabel.Size = UDim2.new(0, 70, 1, 0)
+MinLabel.BackgroundTransparency = 1
+MinLabel.Text = "Min m/s:"
+MinLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+MinLabel.TextSize = 14
+MinLabel.Font = Enum.Font.Gotham
+MinLabel.TextXAlignment = Enum.TextXAlignment.Left
+MinLabel.Parent = MinRow
+
+local MinInput = Instance.new("TextBox")
+MinInput.Size = UDim2.new(0, 80, 0, 30)
+MinInput.Position = UDim2.new(0, 75, 0, 2)
+MinInput.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+MinInput.Text = "0"
+MinInput.TextColor3 = Color3.new(1, 1, 1)
+MinInput.TextSize = 14
+MinInput.Font = Enum.Font.Gotham
+MinInput.PlaceholderText = "e.g. 30, 1.5b"
+MinInput.Parent = MinRow
+Instance.new("UICorner", MinInput).CornerRadius = UDim.new(0, 6)
+
+local JoinBtn = Instance.new("TextButton")
+JoinBtn.Size = UDim2.new(0, 120, 0, 30)
+JoinBtn.Position = UDim2.new(1, -120, 0, 2)
+JoinBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 80)
+JoinBtn.Text = "AUTOJOIN: OFF"
+JoinBtn.TextColor3 = Color3.new(1, 1, 1)
+JoinBtn.TextSize = 14
+JoinBtn.Font = Enum.Font.GothamBold
+JoinBtn.Parent = MinRow
+Instance.new("UICorner", JoinBtn).CornerRadius = UDim.new(0, 6)
+
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, -30, 0, 20)
+Status.Position = UDim2.new(0, 15, 0, 48)       -- ← Moved up from 85 to 48
+Status.BackgroundTransparency = 1
+Status.Text = "Loading servers..."
+Status.TextColor3 = Color3.fromRGB(100, 255, 100)
+Status.TextSize = 13
+Status.Font = Enum.Font.Gotham
+Status.TextXAlignment = Enum.TextXAlignment.Left
+Status.Parent = ContentFrame
+
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, -30, 1, -80)    -- ← Adjusted height to fill space perfectly
+ScrollFrame.Position = UDim2.new(0, 15, 0, 73)  -- ← Moved up from 110 to 73
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollBarThickness = 6
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.Parent = ContentFrame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Padding = UDim.new(0, 8)
+ListLayout.Parent = ScrollFrame
+
+-- [Your original createServerCard, updateServerList, refreshServers, AutoJoin code - 100% unchanged below]
+-- Just copy-paste the rest from your working version (everything after this point is identical)
+
+-- createServerCard (your original - unchanged)
+local function createServerCard(serverData, index)
+    local Card = Instance.new("Frame")
+    Card.Size = UDim2.new(1, -10, 0, 95)
+    Card.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    Card.BorderSizePixel = 0
+    Card.LayoutOrder = index
+    Card.Parent = ScrollFrame
+    Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 8)
+
+    local Name = Instance.new("TextLabel")
+    Name.Size = UDim2.new(1, -90, 0, 22)
+    Name.Position = UDim2.new(0, 10, 0, 8)
+    Name.BackgroundTransparency = 1
+    Name.Text = serverData.name or "Unknown"
+    Name.TextColor3 = Color3.fromRGB(80, 220, 120)
+    Name.TextSize = 16
+    Name.Font = Enum.Font.GothamBold
+    Name.TextXAlignment = Enum.TextXAlignment.Left
+    Name.Parent = Card
+
+    local Money = Instance.new("TextLabel")
+    Money.Size = UDim2.new(1, -90, 0, 18)
+    Money.Position = UDim2.new(0, 10, 0, 30)
+    Money.BackgroundTransparency = 1
+    Money.Text = "$" .. (serverData.money or "0.0") .. "M/s"
+    Money.TextColor3 = Color3.fromRGB(255, 200, 80)
+    Money.TextSize = 14
+    Money.Font = Enum.Font.Gotham
+    Money.TextXAlignment = Enum.TextXAlignment.Left
+    Money.Parent = Card
+
+    local JobId = Instance.new("TextLabel")
+    JobId.Size = UDim2.new(1, -90, 0, 16)
+    JobId.Position = UDim2.new(0, 10, 0, 50)
+    JobId.BackgroundTransparency = 1
+    JobId.Text = "JobId: " .. (serverData.jobId or "N/A")
+    JobId.TextColor3 = Color3.fromRGB(120, 130, 150)
+    JobId.TextSize = 11
+    JobId.Font = Enum.Font.Gotham
+    JobId.TextXAlignment = Enum.TextXAlignment.Left
+    JobId.Parent = Card
+
+    local JoinButton = Instance.new("TextButton")
+    JoinButton.Size = UDim2.new(0, 68, 0, 26)
+    JoinButton.Position = UDim2.new(1, -78, 0, 58)
+    JoinButton.BackgroundColor3 = Color3.fromRGB(70, 140, 255)
+    JoinButton.Text = "JOIN"
+    JoinButton.TextColor3 = Color3.new(1, 1, 1)
+    JoinButton.TextSize = 12
+    JoinButton.Font = Enum.Font.GothamBold
+    JoinButton.Parent = Card
+    Instance.new("UICorner", JoinButton).CornerRadius = UDim.new(0, 6)
+
+    JoinButton.MouseButton1Click:Connect(function()
+        if isJoining then return end
+        Status.Text = "Joining " .. (serverData.name or "server") .. "..."
+        Status.TextColor3 = Color3.fromRGB(255, 200, 100)
+        JoinButton.Text = "JOINING..."
+        JoinButton.BackgroundColor3 = Color3.fromRGB(255, 180, 50)
+        task.spawn(function()
+            teleportToJob(serverData.jobId)
+            task.wait(2)
+            if JoinButton and JoinButton.Parent then
+                JoinButton.Text = "JOIN"
+                JoinButton.BackgroundColor3 = Color3.fromRGB(70, 140, 255)
+            end
+        end)
+    end)
+
+    Card.MouseEnter:Connect(function()
+        TweenService:Create(Card, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(50, 50, 65)}):Play()
+    end)
+    Card.MouseLeave:Connect(function()
+        TweenService:Create(Card, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(35, 35, 45)}):Play()
+    end)
+end
+
+local function updateServerList()
+    for _, child in ipairs(ScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    local filtered = {}
+    for _, server in ipairs(servers) do
+        local sMoney = parseMoney(tostring(server.money or "0"))
+        if sMoney >= minMoney then table.insert(filtered, server) end
+    end
+    table.sort(filtered, function(a, b)
+        return parseMoney(tostring(a.money or "0")) > parseMoney(tostring(b.money or "0"))
+    end)
+    for i, s in ipairs(filtered) do
+        createServerCard(s, i)
+    end
+    ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, (#filtered * 103) + 12)
+    Status.Text = "Found " .. #filtered .. " servers"
+    Status.TextColor3 = Color3.fromRGB(100, 255, 100)
+end
+
+local function refreshServers()
+    Status.Text = "Refreshing..."
+    Status.TextColor3 = Color3.fromRGB(255, 200, 100)
+    task.spawn(function()
+        if fetchServers() then updateServerList()
+        else Status.Text = "Failed to fetch servers"; Status.TextColor3 = Color3.fromRGB(255,100,100) end
+    end)
+end
+
+MinInput.FocusLost:Connect(function()
+    minMoney = parseMoney(MinInput.Text)
+    updateServerList()
+end)
+
+-- Your original AutoJoin (100% untouched & working)
+JoinBtn.MouseButton1Click:Connect(function()
+    if isAutoJoining then
+        isAutoJoining = false
+        JoinBtn.Text = "AUTOJOIN: OFF"
+        JoinBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 80)
+        Status.Text = "Autojoin stopped"
+        return
+    end
+    isAutoJoining = true
+    JoinBtn.Text = "AUTOJOIN: ON"
+    JoinBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 120)
+    Status.Text = "Autojoin running..."
+    task.spawn(function()
+        while isAutoJoining and uiAlive do
+            fetchServers()
+            minMoney = parseMoney(MinInput.Text)
+            local filtered = {}
+            for _, s in ipairs(servers) do
+                if parseMoney(tostring(s.money or "0")) >= minMoney then table.insert(filtered, s) end
+            end
+            if #filtered > 0 then
+                local choice = filtered[math.random(1, #filtered)]
+                Status.Text = "Autojoining: " .. (choice.name or "server")
+                teleportToJob(choice.jobId)
+                task.wait(autoJoinDelay)
+            else
+                Status.Text = "No servers match filter"
+                task.wait(2)
+            end
+        end
+        if uiAlive then
+            JoinBtn.Text = "AUTOJOIN: OFF"
+            JoinBtn.BackgroundColor3 = Color3.fromRGB(255, 120, 80)
+        end
+    end)
+end)
+
+task.spawn(function()
+    while uiAlive do
+        refreshServers()
+        task.wait(5)
+    end
+end)
+
+task.wait(0.5)
+refreshServers()
+print("Alex Joiner - FINAL CLEAN VERSION | No top gap + Perfect Minimize + Original AutoJoin")
