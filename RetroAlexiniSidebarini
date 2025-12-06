@@ -1,0 +1,542 @@
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
+local LocalPlayer = Players.LocalPlayer
+
+------------------------------------------------------------
+-- COMPACT RETRO UI
+------------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RetroAdminUI"
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- button config
+local startY = 50
+local buttons = {}
+local buttonNames = {
+    {Name="Desync", Text="💀 Desync"},
+    {Name="Fly", Text="🕸 Fly"},
+    {Name="Speed", Text="⚡ Speed"},
+    {Name="Floor3", Text="🧱 3rd Floor"},
+    {Name="ESP", Text="👁 ESP"},
+    {Name="Invisible", Text="👻 Invisible"},
+    {Name="AutoSteal", Text="🖐 AutoSteal"}
+}
+
+for i, info in ipairs(buttonNames) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 100, 0, 30) -- smaller buttons
+    btn.Position = UDim2.new(0, 20, 0, startY + (i-1)*40)
+    btn.BackgroundColor3 = Color3.fromRGB(45,45,45)
+    btn.TextColor3 = Color3.fromRGB(255,255,255)
+    btn.Text = info.Text
+    btn.Font = Enum.Font.Gotham -- retro feel, replace with custom font if desired
+    btn.TextScaled = true
+    btn.Name = info.Name
+    btn.Parent = screenGui
+    buttons[info.Name] = btn
+end
+
+------------------------------------------------------------
+-- DESYNC
+------------------------------------------------------------
+local DesyncFlags = {
+    LargeReplicatorEnabled9 = true,
+    GameNetDontSendRedundantNumTimes = 1,
+    MaxTimestepMultiplierAcceleration = 2147483647,
+    InterpolationFrameVelocityThresholdMillionth = 5,
+    CheckPVDifferencesForInterpolationMinRotVelThresholdRadsPerSecHundredth = 1,
+    TimestepArbiterVelocityCriteriaThresholdTwoDt = 2147483646,
+    GameNetPVHeaderLinearVelocityZeroCutoffExponent = -5000,
+    TimestepArbiterHumanoidTurningVelThreshold = 1,
+    LargeReplicatorSerializeWrite4 = true,
+    SimExplicitlyCappedTimestepMultiplier = 2147483646,
+    InterpolationFrameRotVelocityThresholdMillionth = 5,
+    ServerMaxBandwith = 52,
+    LargeReplicatorSerializeRead3 = true,
+    GameNetDontSendRedundantDeltaPositionMillionth = 1,
+    PhysicsSenderMaxBandwidthBps = 20000,
+    CheckPVCachedVelThresholdPercent = 10,
+    NextGenReplicatorEnabledWrite4 = true,
+    LargeReplicatorWrite5 = true,
+    MaxMissedWorldStepsRemembered = -2147483648,
+    StreamJobNOUVolumeCap = 2147483647,
+    CheckPVLinearVelocityIntegrateVsDeltaPositionThresholdPercent = 1,
+    DisableDPIScale = true,
+    WorldStepMax = 30,
+    InterpolationFramePositionThresholdMillionth = 5,
+    MaxAcceptableUpdateDelay = 1,
+    TimestepArbiterOmegaThou = 1073741823,
+    CheckPVCachedRotVelThresholdPercent = 10,
+    StreamJobNOUVolumeLengthCap = 2147483647,
+    S2PhysicsSenderRate = 15000,
+    MaxTimestepMultiplierBuoyancy = 2147483647,
+    SimOwnedNOUCountThresholdMillionth = 2147483647,
+    ReplicationFocusNouExtentsSizeCutoffForPauseStuds = 2147483647,
+    LargeReplicatorRead5 = true,
+    CheckPVDifferencesForInterpolationMinVelThresholdStudsPerSecHundredth = 1,
+    MaxDataPacketPerSend = 2147483647,
+    MaxTimestepMultiplierContstraint = 2147483647,
+    DebugSendDistInSteps = -2147483648,
+    GameNetPVHeaderRotationalVelocityZeroCutoffExponent = -5000,
+    AngularVelociryLimit = 360
+}
+
+local function ActivateDesync()
+    for flag, value in pairs(DesyncFlags) do
+        pcall(function()
+            setfflag(tostring(flag), tostring(value))
+        end)
+    end
+    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+end
+
+buttons.Desync.MouseButton1Click:Connect(ActivateDesync)
+
+------------------------------------------------------------
+-- FLY
+------------------------------------------------------------
+local flyOn = false
+local flyConn
+buttons.Fly.MouseButton1Click:Connect(function()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    flyOn = not flyOn
+    buttons.Fly.BackgroundColor3 = flyOn and Color3.fromRGB(200,200,0) or Color3.fromRGB(45,45,45)
+    if flyOn and hrp then
+        flyConn = RunService.RenderStepped:Connect(function()
+            local cam = workspace.CurrentCamera
+            local dir = cam.CFrame.LookVector * 25
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                hrp.Velocity = Vector3.new(dir.X,50,dir.Z)
+            elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                hrp.Velocity = Vector3.new(dir.X,-50,dir.Z)
+            else
+                hrp.Velocity = dir
+            end
+        end)
+    else
+        if flyConn then flyConn:Disconnect() flyConn=nil end
+    end
+end)
+
+------------------------------------------------------------
+-- SPEED BOOST
+------------------------------------------------------------
+local speedActive = false
+local speedConn
+local baseSpeed = 27
+local function startSpeed()
+    if speedConn then return end
+    speedConn = RunService.Heartbeat:Connect(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hrp and hum then
+            local dir = hum.MoveDirection
+            if dir.Magnitude > 0 then
+                hrp.AssemblyLinearVelocity = Vector3.new(dir.X*baseSpeed, hrp.AssemblyLinearVelocity.Y, dir.Z*baseSpeed)
+            else
+                hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y,0)
+            end
+        end
+    end)
+end
+local function stopSpeed()
+    if speedConn then speedConn:Disconnect() speedConn=nil end
+end
+buttons.Speed.MouseButton1Click:Connect(function()
+    speedActive = not speedActive
+    if speedActive then
+        startSpeed()
+        buttons.Speed.BackgroundColor3=Color3.fromRGB(0,170,0)
+    else
+        stopSpeed()
+        buttons.Speed.BackgroundColor3=Color3.fromRGB(45,45,45)
+    end
+end)
+
+------------------------------------------------------------
+-- 3RD FLOOR PLATFORM
+------------------------------------------------------------
+local platform, platformConn, platformActive=false
+local RISE_SPEED=15
+local function destroyPlatform()
+    if platform then platform:Destroy() platform=nil end
+    if platformConn then platformConn:Disconnect() platformConn=nil end
+    platformActive=false
+    buttons.Floor3.BackgroundColor3=Color3.fromRGB(45,45,45)
+end
+
+local function setup3rdFloor(char)
+    local root = char:WaitForChild("HumanoidRootPart")
+    buttons.Floor3.MouseButton1Click:Connect(function()
+        platformActive = not platformActive
+        if platformActive then
+            platform = Instance.new("Part")
+            platform.Size=Vector3.new(6,0.5,6)
+            platform.Anchored=true
+            platform.CanCollide=true
+            platform.Position=root.Position-Vector3.new(0,char.Humanoid.HipHeight+0.25,0)
+            platform.Material=Enum.Material.Plastic
+            platform.Color=Color3.fromRGB(255,200,0)
+            platform.Parent=workspace
+
+            platformConn=RunService.Heartbeat:Connect(function(dt)
+                if platform and platformActive then
+                    platform.Position = Vector3.new(root.Position.X, platform.Position.Y, root.Position.Z)
+                end
+            end)
+            buttons.Floor3.BackgroundColor3=Color3.fromRGB(0,170,0)
+        else
+            destroyPlatform()
+        end
+    end)
+    char:WaitForChild("Humanoid").Died:Connect(destroyPlatform)
+end
+if LocalPlayer.Character then setup3rdFloor(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(setup3rdFloor)
+
+------------------------------------------------------------
+-- ESP
+------------------------------------------------------------
+local espEnabled=false
+local espConns={}
+local function clearESP()
+    for _,conn in pairs(espConns) do conn:Disconnect() end
+    espConns={}
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p.Character then
+            for _,o in ipairs(p.Character:GetDescendants()) do
+                if o:IsA("BoxHandleAdornment") or o:IsA("BillboardGui") then o:Destroy() end
+            end
+        end
+    end
+end
+local function createESP(char,p)
+    if char:FindFirstChild("HumanoidRootPart") then
+        local hrp=char.HumanoidRootPart
+        local box=Instance.new("BoxHandleAdornment")
+        box.Size=char:GetExtentsSize()
+        box.Adornee=char
+        box.Color=Color3.fromRGB(255,120,0)
+        box.Transparency=0.6
+        box.AlwaysOnTop=true
+        box.Parent=hrp
+        local billboard=Instance.new("BillboardGui")
+        billboard.Adornee=hrp
+        billboard.Size=UDim2.new(0,80,0,15)
+        billboard.StudsOffset=Vector3.new(0,3,0)
+        billboard.AlwaysOnTop=true
+        billboard.Parent=hrp
+        local label=Instance.new("TextLabel")
+        label.Size=UDim2.new(1,0,1,0)
+        label.BackgroundTransparency=0.4
+        label.BackgroundColor3=Color3.fromRGB(20,20,20)
+        label.Text=p.Name
+        label.Font=Enum.Font.Arcade
+        label.TextSize=10
+        label.TextColor3=Color3.fromRGB(255,120,0)
+        label.Parent=billboard
+    end
+end
+
+buttons.ESP.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    if espEnabled then
+        for _,p in ipairs(Players:GetPlayers()) do
+            if p~=LocalPlayer then
+                local char = p.Character
+                if char then createESP(char,p) end
+                table.insert(espConns, p.CharacterAdded:Connect(function(c) createESP(c,p) end))
+            end
+        end
+        table.insert(espConns, Players.PlayerAdded:Connect(function(p)
+            if p~=LocalPlayer then
+                local char = p.Character
+                if char then createESP(char,p) end
+                table.insert(espConns, p.CharacterAdded:Connect(function(c) createESP(c,p) end))
+            end
+        end))
+        buttons.ESP.BackgroundColor3=Color3.fromRGB(0,170,0)
+    else
+        clearESP()
+        buttons.ESP.BackgroundColor3=Color3.fromRGB(45,45,45)
+    end
+end)
+
+------------------------------------------------------------
+-- SEMI-INVISIBLE (FULL VERSION)
+------------------------------------------------------------
+local connections = {SemiInvisible={}}
+local isInvisible = false
+local clone, oldRoot, hip, animTrack, connection, characterConnection
+
+local function semiInvisibleFunction()
+    local DEPTH_OFFSET = 0.09
+
+    local function removeFolders()
+        local playerName = LocalPlayer.Name
+        local playerFolder = workspace:FindFirstChild(playerName)
+        if not playerFolder then return end
+        local doubleRig = playerFolder:FindFirstChild("DoubleRig")
+        if doubleRig then doubleRig:Destroy() end
+        local constraints = playerFolder:FindFirstChild("Constraints")
+        if constraints then constraints:Destroy() end
+        local childAddedConn = playerFolder.ChildAdded:Connect(function(child)
+            if child.Name == "DoubleRig" or child.Name=="Constraints" then
+                child:Destroy()
+            end
+        end)
+        table.insert(connections.SemiInvisible, childAddedConn)
+    end
+
+    local function doClone()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health>0 then
+            hip = LocalPlayer.Character.Humanoid.HipHeight
+            oldRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not oldRoot or not oldRoot.Parent then return false end
+
+            local tempParent = Instance.new("Model")
+            tempParent.Parent = game
+            LocalPlayer.Character.Parent = tempParent
+
+            clone = oldRoot:Clone()
+            clone.Parent = LocalPlayer.Character
+            oldRoot.Parent = workspace.CurrentCamera
+            clone.CFrame = oldRoot.CFrame
+            LocalPlayer.Character.PrimaryPart = clone
+            LocalPlayer.Character.Parent = workspace
+
+            for _,v in pairs(LocalPlayer.Character:GetDescendants()) do
+                if v:IsA("Weld") or v:IsA("Motor6D") then
+                    if v.Part0==oldRoot then v.Part0=clone end
+                    if v.Part1==oldRoot then v.Part1=clone end
+                end
+            end
+            tempParent:Destroy()
+            return true
+        end
+        return false
+    end
+
+    local function revertClone()
+        if not oldRoot or not oldRoot:IsDescendantOf(workspace) or not LocalPlayer.Character or LocalPlayer.Character.Humanoid.Health<=0 then return false end
+        local tempParent = Instance.new("Model")
+        tempParent.Parent = game
+        LocalPlayer.Character.Parent = tempParent
+        oldRoot.Parent = LocalPlayer.Character
+        LocalPlayer.Character.PrimaryPart = oldRoot
+        LocalPlayer.Character.Parent = workspace
+        oldRoot.CanCollide = true
+        for _,v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("Weld") or v:IsA("Motor6D") then
+                if v.Part0==clone then v.Part0=oldRoot end
+                if v.Part1==clone then v.Part1=oldRoot end
+            end
+        end
+        if clone then
+            local oldPos = clone.CFrame
+            clone:Destroy()
+            clone=nil
+            oldRoot.CFrame = oldPos
+        end
+        oldRoot=nil
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.HipHeight = hip
+        end
+    end
+
+    local function animationTrickery()
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health>0 then
+            local anim = Instance.new("Animation")
+            anim.AnimationId="http://www.roblox.com/asset/?id=18537363391"
+            local humanoid=LocalPlayer.Character.Humanoid
+            local animator=humanoid:FindFirstChild("Animator") or Instance.new("Animator",humanoid)
+            animTrack=animator:LoadAnimation(anim)
+            animTrack.Priority=Enum.AnimationPriority.Action4
+            animTrack:Play(0,1,0)
+            anim:Destroy()
+
+            local animStoppedConn=animTrack.Stopped:Connect(function()
+                if isInvisible then animationTrickery() end
+            end)
+            table.insert(connections.SemiInvisible, animStoppedConn)
+
+            task.delay(0,function()
+                animTrack.TimePosition = 0.7
+                task.delay(1,function()
+                    animTrack:AdjustSpeed(math.huge)
+                end)
+            end)
+        end
+    end
+
+    local function enableInvisibility()
+        if not LocalPlayer.Character or LocalPlayer.Character.Humanoid.Health<=0 then return false end
+        removeFolders()
+        local success = doClone()
+        if success then
+            task.wait(0.1)
+            animationTrickery()
+            connection = RunService.PreSimulation:Connect(function(dt)
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health>0 and oldRoot then
+                    local root=LocalPlayer.Character.PrimaryPart or LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                    if root then
+                        local cf=root.CFrame - Vector3.new(0,LocalPlayer.Character.Humanoid.HipHeight+(root.Size.Y/2)-1+DEPTH_OFFSET,0)
+                        oldRoot.CFrame = cf*CFrame.Angles(math.rad(180),0,0)
+                        oldRoot.Velocity = root.Velocity
+                        oldRoot.CanCollide=false
+                    end
+                end
+            end)
+            table.insert(connections.SemiInvisible, connection)
+
+            characterConnection=LocalPlayer.CharacterAdded:Connect(function(newChar)
+                if isInvisible then
+                    if animTrack then animTrack:Stop() animTrack:Destroy() animTrack=nil end
+                    if connection then connection:Disconnect() end
+                    revertClone()
+                    removeFolders()
+                    isInvisible=false
+                    for _,conn in ipairs(connections.SemiInvisible) do
+                        if conn then conn:Disconnect() end
+                    end
+                    connections.SemiInvisible = {}
+                end
+            end)
+            table.insert(connections.SemiInvisible, characterConnection)
+            return true
+        end
+        return false
+    end
+
+    local function disableInvisibility()
+        if animTrack then animTrack:Stop() animTrack:Destroy() animTrack=nil end
+        if connection then connection:Disconnect() end
+        if characterConnection then characterConnection:Disconnect() end
+        revertClone()
+        removeFolders()
+    end
+
+    local function setupGodmode()
+        local char=LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+        local hum=char:WaitForChild("Humanoid")
+        local mt=getrawmetatable(game)
+        local oldNC=mt.__namecall
+        local oldNI=mt.__newindex
+        setreadonly(mt,false)
+
+        mt.__namecall = newcclosure(function(self,...)
+            local m=getnamecallmethod()
+            if self==hum then
+                if m=="ChangeState" and select(1,...)==Enum.HumanoidStateType.Dead then return end
+                if m=="SetStateEnabled" then return end
+            end
+            return oldNC(self,...)
+        end)
+
+        mt.__newindex = newcclosure(function(self,key,value)
+            if self==hum then
+                if key=="Health" then return end
+            end
+            return oldNI(self,key,value)
+        end)
+        setreadonly(mt,true)
+    end
+
+    if isInvisible then
+        disableInvisibility()
+        buttons.Invisible.BackgroundColor3=Color3.fromRGB(45,45,45)
+        isInvisible=false
+    else
+        local success = enableInvisibility()
+        if success then
+            setupGodmode()
+            buttons.Invisible.BackgroundColor3=Color3.fromRGB(0,170,0)
+            isInvisible=true
+        end
+    end
+end
+
+buttons.Invisible.MouseButton1Click:Connect(semiInvisibleFunction)
+
+------------------------------------------------------------
+-- AUTO STEAL
+------------------------------------------------------------
+local autoSteal = false
+local stealPrompts = {}
+local function getPromptPos(prompt)
+    local parent = prompt.Parent
+    if not parent then return nil end
+    if parent:IsA("BasePart") then return parent.Position end
+    if parent:IsA("Attachment") and parent.Parent and parent.Parent:IsA("BasePart") then
+        return parent.WorldPosition
+    end
+    if parent:IsA("Model") then
+        local pp=parent.PrimaryPart
+        if pp then return pp.Position end
+        for _,o in ipairs(parent:GetDescendants()) do
+            if o:IsA("BasePart") then return o.Position end
+        end
+    end
+    return nil
+end
+
+local function addPrompt(p)
+    if stealPrompts[p] then return end
+    stealPrompts[p]={holding=false}
+end
+local function removePrompt(p)
+    if stealPrompts[p] then
+        pcall(function() p:InputHoldEnd() end)
+        stealPrompts[p]=nil
+    end
+end
+
+for _,p in ipairs(workspace:GetDescendants()) do
+    if p:IsA("ProximityPrompt") and p.ActionText=="Steal" then addPrompt(p) end
+end
+
+workspace.DescendantAdded:Connect(function(p)
+    if p:IsA("ProximityPrompt") and p.ActionText=="Steal" then addPrompt(p) end
+end)
+workspace.DescendantRemoving:Connect(function(p)
+    if p:IsA("ProximityPrompt") then removePrompt(p) end
+end)
+
+buttons.AutoSteal.MouseButton1Click:Connect(function()
+    autoSteal = not autoSteal
+    buttons.AutoSteal.BackgroundColor3=autoSteal and Color3.fromRGB(0,170,0) or Color3.fromRGB(45,45,45)
+end)
+
+RunService.Heartbeat:Connect(function()
+    if not autoSteal then return end
+    local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    for prompt,state in pairs(stealPrompts) do
+        if not prompt or not prompt.Parent then removePrompt(prompt) continue end
+        local pos = getPromptPos(prompt)
+        if not pos then continue end
+        if (root.Position-pos).Magnitude <= prompt.MaxActivationDistance and not state.holding then
+            state.holding=true
+            task.spawn(function()
+                pcall(function() prompt:InputHoldBegin() end)
+                local t=0
+                while t<prompt.HoldDuration and prompt and prompt.Parent and state.holding do
+                    task.wait(0.05)
+                    t+=0.05
+                    local np = getPromptPos(prompt)
+                    if not np or (root.Position-np).Magnitude>prompt.MaxActivationDistance then state.holding=false break end
+                end
+                pcall(function() prompt:InputHoldEnd() end)
+                state.holding=false
+            end)
+        end
+    end
+end)
